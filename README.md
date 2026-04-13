@@ -4,6 +4,108 @@ Interface construída com **Vue 3** (Composition API), **TypeScript**, **Tailwin
 
 ---
 
+## Fluxo da Aplicação
+
+### Arquitetura
+
+```mermaid
+flowchart LR
+    subgraph FE["Frontend (Vue 3 · Pinia · Axios)"]
+        UI["Componentes Vue\nRouter · Stores · Services"]
+    end
+
+    subgraph BE["Backend (FastAPI)"]
+        AUTH["/api/auth"]
+        IDEAS["/api/ideas"]
+        AIEP["/api/ai"]
+        ADM["/api/admin\n/api/ranking"]
+    end
+
+    subgraph EXT["API Externa"]
+        HF["HuggingFace Inference API\nfacebook/bart-large-mnli\n(Zero-shot Classification)"]
+    end
+
+    DB[(PostgreSQL)]
+
+    UI -->|"Bearer JWT"| AUTH
+    UI -->|"Bearer JWT"| IDEAS
+    UI -->|"Bearer JWT"| AIEP
+    UI -->|"Bearer JWT"| ADM
+
+    AUTH --> DB
+    IDEAS --> DB
+    ADM --> DB
+
+    IDEAS -->|"HUGGINGFACE_TOKEN\nCriar / Editar ideia"| HF
+    AIEP -->|"HUGGINGFACE_TOKEN\nCategorizar / Similares"| HF
+```
+
+---
+
+### Fluxo principal
+
+```mermaid
+flowchart TD
+    Start([Usuário acessa o app]) --> Auth{JWT válido?}
+
+    Auth -- Não --> Login["Tela de Login / Cadastro\n(role: user · developer)"]
+    Login -->|"POST /api/auth/login"| Token["JWT + role\narmazenados no Pinia"]
+    Token --> Role
+    Auth -- Sim --> Role{Role do usuário?}
+
+    Role -- user --> PageUser["Listagem de Ideias\n/ideas"]
+    Role -- developer --> PageDev["Ideias · Kanban · Ranking\n/ideas · /kanban · /ranking"]
+    Role -- admin --> PageAdmin["Dashboard Administrativo\n/admin/dashboard"]
+
+    PageUser --> CreateIdea["Criar Ideia\nPOST /api/ideas"]
+    CreateIdea -->|"Descrição enviada"| HF["HuggingFace API\nbrat-large-mnli\nZero-shot classification"]
+    HF -- Sucesso --> Categorized["Ideia salva\ncom categoria automática"]
+    HF -- Falha ou sem token --> Fallback["Ideia salva\ncategoria = Other"]
+
+    Categorized --> IdeaCard
+    Fallback --> IdeaCard
+
+    IdeaCard["Ideia na listagem"] --> Actions{Ações}
+    Actions --> Vote["Votar (toggle)\nPOST /api/ideas/{id}/vote\nnão vota na própria ideia"]
+    Actions --> Comment["Comentar\nPOST /api/ideas/{id}/comments"]
+    Actions --> Similar["Ver similares\nPOST /api/ai/similar"]
+    Actions --> EditContent["Editar titulo / descricao\nsomente o autor"]
+    Actions --> DeleteIdea["Deletar\nsomente o autor"]
+
+    PageDev --> Kanban["Kanban Board\nCards por status"]
+    Kanban -->|"Arrastar card"| ChangeStatus["PUT /api/ideas/{id}\nmuda o status"]
+
+    PageAdmin --> AdminStats["Metricas\nGET /api/admin/stats"]
+    PageAdmin --> AdminUsers["Gerenciar roles\nPUT /api/admin/users/{id}/role"]
+    PageAdmin --> AdminArchive["Arquivar ideias\nexclusivo do admin"]
+```
+
+---
+
+### Ciclo de vida de uma ideia
+
+```mermaid
+stateDiagram-v2
+    direction LR
+    [*] --> idea : Criada por user ou developer
+    idea --> evaluation : Colaborador / Admin
+    evaluation --> idea : Colaborador / Admin
+    evaluation --> development : Colaborador / Admin
+    development --> evaluation : Colaborador / Admin
+    development --> completed : Colaborador / Admin
+    idea --> archived : Somente Admin
+    evaluation --> archived : Somente Admin
+    development --> archived : Somente Admin
+    completed --> archived : Somente Admin
+    completed --> [*]
+    archived --> [*]
+```
+
+> Ideias nos estados `completed` e `archived` nao aceitam votos nem edicao de conteudo.
+> Apenas o **admin** pode arquivar. Apenas o **autor** pode deletar ou editar conteudo.
+
+---
+
 ## Executar com Docker (recomendado)
 
 ```bash
