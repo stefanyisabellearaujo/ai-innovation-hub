@@ -1,0 +1,18 @@
+version: '3.8'
+
+services:
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "3000:80"
+    environment:
+      # URL do backend — use host.docker.internal para apontar para o host local
+      # Em produção, altere para o endereço real do backend
+      BACKEND_URL: ${BACKEND_URL:-http://host.docker.internal:8000}
+    extra_hosts:
+      # Permite que o container acesse serviços no host pelo nome host.docker.internal
+      # Funciona em Linux com Docker 20.10+ e Docker Desktop (Mac/Windows)
+      - "host.docker.internal:host-gateway"
